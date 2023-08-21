@@ -223,11 +223,11 @@ async fn main() {
         .collect();
 
     let mut no_flairless_plot = Plot::new();
-    let hot_data = collect_data(&all_flairs_no_flairless, hot_data_no_flairless);
+    let hot_data = collect_data(&all_flairs_no_flairless, hot_data_no_flairless.clone());
     let hot_trace = Bar::new(all_flairs_no_flairless.clone(), hot_data).name("Hot");
-    let latest_data = collect_data(&all_flairs_no_flairless, latest_data_no_flairless);
+    let latest_data = collect_data(&all_flairs_no_flairless, latest_data_no_flairless.clone());
     let latest_trace = Bar::new(all_flairs_no_flairless.clone(), latest_data).name("Latest");
-    let top_data = collect_data(&all_flairs_no_flairless, top_data_no_flairless);
+    let top_data = collect_data(&all_flairs_no_flairless, top_data_no_flairless.clone());
     let top_trace = Bar::new(all_flairs_no_flairless, top_data).name("Top");
 
     no_flairless_plot.add_trace(hot_trace);
@@ -236,13 +236,13 @@ async fn main() {
 
     no_flairless_plot.write_image("flairs_no_flairless.png", ImageFormat::PNG, 800, 600, 1.0);
 
-    println!("--- Flair Post Data (No Flairless) ---");
+    println!("\n\n--- Flair Post Data (No Flairless) ---");
     println!("Hot Flair Percentages:");
-    print_percentages(&hot_data_flair);
+    print_percentages(&hot_data_no_flairless);
     println!("\nLatest Flair Percentages:");
-    print_percentages(&latest_data_flair);
+    print_percentages(&latest_data_no_flairless);
     println!("\nTop Flair Percentages:");
-    print_percentages(&top_data_flair);
+    print_percentages(&top_data_no_flairless);
 
     // Plot NSFW data
     let hot_data_nsfw = process_posts_nsfw(&hot);
@@ -256,7 +256,7 @@ async fn main() {
 
     nsfw_plot.write_image("nsfw.png", ImageFormat::PNG, 800, 600, 1.0);
 
-    println!("\n--- NSFW Post Data ---");
+    println!("\n\n--- NSFW Post Data ---");
     println!("Hot NSFW Percentages:");
     print_percentages_nsfw(&hot_data_nsfw);
     println!("\nLatest NSFW Percentages:");
