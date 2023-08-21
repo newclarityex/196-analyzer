@@ -3,9 +3,9 @@ extern crate dotenv_codegen;
 
 use plotly::{Bar, ImageFormat, Plot};
 use roux::{response::BasicThing, submission::SubmissionData, util::FeedOption, Reddit, Subreddit};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-type SubmissionsVec = Vec<BasicThing<SubmissionData>>;
+type SubmissionsVec = VecDeque<BasicThing<SubmissionData>>;
 
 #[derive(PartialEq)]
 enum PostType {
@@ -16,22 +16,20 @@ enum PostType {
 
 async fn collect_posts(subreddit: &Subreddit, count: u32, post_type: PostType) -> SubmissionsVec {
     // Collect 100 every minute
-    let mut posts: SubmissionsVec = Vec::new();
+    let mut posts: SubmissionsVec = VecDeque::new();
     let mut remaining = count;
     let mut after: Option<String> = None;
-    let mut existing_ids = HashSet::new();
+    let mut before: Option<String> = None;
 
     while remaining > 0 {
         let limit = std::cmp::min(100, remaining);
-        let mut options = FeedOption::new().limit(limit).count(posts.len() as u32);
-
-        if let Some(valid_after) = after {
-            options = options.after(valid_after.as_str());
-        }
-
-        if post_type == PostType::Top {
-            options = options.period(roux::util::TimePeriod::ThisMonth);
-        }
+        let options = FeedOption {
+            limit: Some(limit),
+            count: Some(posts.len() as u32),
+            after: after.clone(),
+            before: before.clone(),
+            period: Some(roux::util::TimePeriod::ThisMonth),
+        };
 
         let new_posts = match post_type {
             PostType::Hot => {
@@ -62,24 +60,29 @@ async fn collect_posts(subreddit: &Subreddit, count: u32, post_type: PostType) -
 
         remaining = remaining.saturating_sub(new_posts.len() as u32);
 
-        for post in new_posts {
-            let id = post.data.id.to_owned();
-            println!("Added post: {}", post.data.title);
-            if existing_ids.contains(&id) {
-                println!("duplicate id: {}", id);
-            } else {
-                existing_ids.insert(id);
-                posts.push(post);
+        let new_posts_len = new_posts.len();
+
+        // Hack I had to do because the API only holds 1000 posts, and the script breaks when new posts are made while it's running
+        if after.is_some() {
+            posts.extend(new_posts);
+        } else {
+            for post in new_posts {
+                posts.push_front(post);
             }
         }
 
-        let new_after: String = "t3_".to_owned() + &posts.last().unwrap().data.id.to_owned();
+        if before.is_some() || new_posts_len == 0 {
+            before = Some("t3_".to_owned() + &posts.front().unwrap().data.id.to_owned());
+            after = None;
+        }
 
-        after = Some(new_after);
-
-        println!("after: {:?}", after);
+        if before.is_none() {
+            let new_after: String = "t3_".to_owned() + &posts.back().unwrap().data.id.to_owned();
+            after = Some(new_after);
+        }
 
         println!("{} posts remaining\n", remaining);
+
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     }
 
@@ -103,12 +106,8 @@ fn process_posts_flair(posts: &SubmissionsVec, include_flairless: bool) -> HashM
             .clone()
             .unwrap_or("None".to_string());
 
-        if let std::collections::hash_map::Entry::Vacant(e) = results.entry(flair.clone()) {
-            e.insert(1);
-        } else {
-            let count = results.get_mut(&flair).unwrap();
-            *count += 1;
-        }
+        let count = results.entry(flair).or_insert(0);
+        *count += 1;
     });
 
     results
@@ -181,10 +180,12 @@ async fn main() {
     let top = collect_posts(&subreddit, count, PostType::Top).await;
     let top_data_flair = process_posts_flair(&top, true);
 
-    let mut all_flairs: Vec<String> = Vec::new();
+    let mut all_flairs = HashSet::new();
     all_flairs.extend(hot_data_flair.keys().cloned());
     all_flairs.extend(latest_data_flair.keys().cloned());
     all_flairs.extend(top_data_flair.keys().cloned());
+
+    let all_flairs = all_flairs.iter().cloned().collect::<Vec<String>>();
 
     // Plot flair data
     let hot_data = collect_data(&all_flairs, hot_data_flair.clone());
